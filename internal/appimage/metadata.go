@@ -86,25 +86,19 @@ func detectTypeAndOffset(info *InspectInfo) {
 	}
 	defer f.Close()
 
-	// detect ELF/type2
 	ef, err := elf.NewFile(f)
 	if err == nil {
 		defer ef.Close()
-		// AppImage type 2 is typically ELF + appended squashfs
+		// collect candidates: elf-derived end and all hsqs occurrences
 		off := elfEndOffset(ef)
-		info.Offset = off
-		if off > 0 && off < info.Image.Size {
-			if checkMagicAt(f, off) {
-				info.Type = Type2
-				info.Origins["type"] = "elf+squashfs-magic"
-				return
-			}
-		}
-		// scan for hsqs magic as fallback
-		if off2 := scanSquashfsMagic(f, info.Image.Size); off2 > 0 {
-			info.Offset = off2
+		magics := scanSquashfsMagics(f, info.Image.Size)
+		cands := uniqueOffsets(append([]int64{off}, magics...))
+		if len(cands) > 0 {
 			info.Type = Type2
-			info.Origins["type"] = "squashfs-magic-scan"
+			info.Origins["type"] = "elf+squashfs-candidates"
+			// provisional; will be validated in extractMetadata
+			info.Offset = pickBestCandidateOffset(cands, off)
+			info.Origins["offset_candidates"] = fmt.Sprintf("%v", cands)
 			return
 		}
 		info.Type = Type1
@@ -112,14 +106,43 @@ func detectTypeAndOffset(info *InspectInfo) {
 		return
 	}
 
-	// non-ELF: scan for magic
-	if off2 := scanSquashfsMagic(f, info.Image.Size); off2 > 0 {
-		info.Offset = off2
+	magics := scanSquashfsMagics(f, info.Image.Size)
+	if len(magics) > 0 {
 		info.Type = Type2
+		info.Offset = magics[0]
 		info.Origins["type"] = "squashfs-magic-scan"
+		info.Origins["offset_candidates"] = fmt.Sprintf("%v", magics)
 		return
 	}
 	info.Type = TypeUnknown
+}
+
+func uniqueOffsets(in []int64) []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	for _, v := range in {
+		if v <= 0 {
+			continue
+		}
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func pickBestCandidateOffset(cands []int64, preferred int64) int64 {
+	for _, c := range cands {
+		if c == preferred {
+			return c
+		}
+	}
+	if len(cands) > 0 {
+		return cands[len(cands)-1]
+	}
+	return 0
 }
 
 func elfEndOffset(ef *elf.File) int64 {
@@ -149,9 +172,10 @@ func checkMagicAt(r io.ReaderAt, off int64) bool {
 	return err == nil && n == 4 && bytes.Equal(b, squashfsMagic)
 }
 
-func scanSquashfsMagic(r io.ReaderAt, size int64) int64 {
-	// scan in 4-byte steps up to reasonable range; AppImages can be large, so sample/scan chunks
+func scanSquashfsMagics(r io.ReaderAt, size int64) []int64 {
 	buf := make([]byte, 4096)
+	var found []int64
+	seen := map[int64]bool{}
 	for off := int64(0); off < size; off += int64(len(buf) - 3) {
 		n, err := r.ReadAt(buf, off)
 		if n < 4 {
@@ -161,17 +185,25 @@ func scanSquashfsMagic(r io.ReaderAt, size int64) int64 {
 			continue
 		}
 		chunk := buf[:n]
-		idx := bytes.Index(chunk, squashfsMagic)
-		if idx >= 0 {
-			cand := off + int64(idx)
-			// squashfs superblock starts at magic
-			return cand
+		search := 0
+		for {
+			idx := bytes.Index(chunk[search:], squashfsMagic)
+			if idx < 0 {
+				break
+			}
+			cand := off + int64(search+idx)
+			if !seen[cand] {
+				seen[cand] = true
+				found = append(found, cand)
+			}
+			search += idx + 1
 		}
 		if err != nil {
 			break
 		}
 	}
-	return 0
+	sort.Slice(found, func(i, j int) bool { return found[i] < found[j] })
+	return found
 }
 
 func extractMetadata(info *InspectInfo) error {
@@ -181,10 +213,14 @@ func extractMetadata(info *InspectInfo) error {
 	}
 	info.ExtractTool = tool
 
-	files, err := listSquashfs(tool, info.Image.Path, info.Offset)
+	offsets := candidateOffsets(info)
+	files, usedOffset, err := listSquashfsWithCandidates(tool, info.Image.Path, offsets)
 	if err != nil {
 		return fmt.Errorf("list squashfs: %w", err)
 	}
+	info.Offset = usedOffset
+	info.Origins["offset"] = fmt.Sprintf("%d", usedOffset)
+
 	desktop := pickDesktop(files)
 	if desktop == "" {
 		info.Warnings = append(info.Warnings, "no .desktop file found inside AppImage")
@@ -194,7 +230,11 @@ func extractMetadata(info *InspectInfo) error {
 		if err != nil {
 			info.Warnings = append(info.Warnings, fmt.Sprintf("extract desktop: %v", err))
 		} else {
-			info.Metadata, info.Origins = parseDesktopEntry(data)
+			md, origins := parseDesktopEntry(data)
+			info.Metadata = md
+			for k, v := range origins {
+				info.Origins[k] = v
+			}
 			info.Origins["desktop_file"] = "embedded:" + desktop
 		}
 	}
@@ -216,16 +256,72 @@ func extractMetadata(info *InspectInfo) error {
 	return nil
 }
 
+func candidateOffsets(info *InspectInfo) []int64 {
+	// parse stored candidates plus current/probed offset
+	var cands []int64
+	if s, ok := info.Origins["offset_candidates"]; ok {
+		s = strings.Trim(s, "[]")
+		for _, p := range strings.Fields(s) {
+			p = strings.TrimSpace(p)
+			var v int64
+			if _, err := fmt.Sscan(p, &v); err == nil && v > 0 {
+				cands = append(cands, v)
+			}
+		}
+	}
+	if info.Offset > 0 {
+		cands = append(cands, info.Offset)
+	}
+	// as a fallback, rescan magics
+	f, err := os.Open(info.Image.Path)
+	if err == nil {
+		cands = append(cands, scanSquashfsMagics(f, info.Image.Size)...)
+		f.Close()
+	}
+	return uniqueOffsets(cands)
+}
+
+func listSquashfsWithCandidates(tool, image string, offsets []int64) ([]string, int64, error) {
+	if len(offsets) == 0 {
+		offsets = []int64{0}
+	}
+	var lastErr error
+	// try in reverse order too? many AppImages have real squashfs later; try all and prefer one that yields files
+	for _, off := range offsets {
+		files, err := listSquashfs(tool, image, off)
+		if err == nil && len(files) > 0 {
+			return files, off, nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("empty listing at offset %d", off)
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no valid squashfs offset found")
+	}
+	return nil, 0, lastErr
+}
+
 func listSquashfs(tool, image string, offset int64) ([]string, error) {
 	cmd := exec.Command(tool, "-o", fmt.Sprintf("%d", offset), "-ll", image)
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// try without -ll details
 		cmd = exec.Command(tool, "-o", fmt.Sprintf("%d", offset), "-l", image)
-		out, err = cmd.Output()
-		if err != nil {
-			return nil, err
+		out2, err2 := cmd.CombinedOutput()
+		if err2 != nil {
+			msg := strings.TrimSpace(string(out2))
+			if msg == "" {
+				msg = strings.TrimSpace(string(out))
+			}
+			if msg != "" {
+				return nil, fmt.Errorf("%v: %s", err2, msg)
+			}
+			return nil, err2
 		}
+		out = out2
 	}
 	var files []string
 	sc := bufio.NewScanner(bytes.NewReader(out))
@@ -295,60 +391,128 @@ func pickDesktop(files []string) string {
 
 func pickIcon(files []string, iconName string) string {
 	if iconName == "" {
-		// common fallbacks
-		for _, name := range []string{".DirIcon", "AppIcon.png", "appicon.png"} {
-			for _, f := range files {
-				if filepath.Base(f) == name || f == name {
-					return f
-				}
-			}
-		}
-		return ""
+		return pickFallbackIcon(files)
 	}
-	base := iconName
-	if filepath.Ext(base) != "" {
-		// exact/endswith match
+	baseName := filepath.Base(iconName)
+	knownExts := []string{".png", ".svg", ".svgz", ".xpm", ".ico"}
+	lowerBase := strings.ToLower(baseName)
+	hasImageExt := false
+	for _, e := range knownExts {
+		if strings.HasSuffix(lowerBase, e) {
+			hasImageExt = true
+			break
+		}
+	}
+
+	// if a concrete image filename is referenced, try exact basename match
+	if hasImageExt {
 		for _, f := range files {
-			if filepath.Base(f) == base {
+			if strings.EqualFold(filepath.Base(f), baseName) {
 				return f
 			}
 		}
 	}
-	// try common extensions and locations
-	exts := []string{".png", ".svg", ".xpm"}
+
+	nameNoExt := baseName
+	if hasImageExt {
+		nameNoExt = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	}
+
+	// match by icon id/name (handles reverse-DNS names with dots, e.g. org.shotcut.Shotcut)
+	var matches []string
 	for _, f := range files {
 		b := filepath.Base(f)
 		bno := strings.TrimSuffix(b, filepath.Ext(b))
-		if bno == base || b == base {
-			for _, e := range exts {
-				if strings.EqualFold(filepath.Ext(b), e) || filepath.Ext(b) == "" {
-					return f
-				}
+		lb := strings.ToLower(b)
+		if strings.EqualFold(b, baseName) || strings.EqualFold(bno, nameNoExt) || strings.EqualFold(bno, baseName) {
+			// prefer image-like files
+			if isImageFile(lb) || b == ".DirIcon" {
+				matches = append(matches, f)
+			} else if !hasImageExt {
+				matches = append(matches, f)
 			}
-			return f
 		}
 	}
-	for _, e := range exts {
-		want := base + e
+	if len(matches) > 0 {
+		sort.Slice(matches, func(i, j int) bool { return iconScore(matches[i]) > iconScore(matches[j]) })
+		return matches[0]
+	}
+
+	// try name + known extensions
+	for _, e := range knownExts {
+		want := nameNoExt + e
 		for _, f := range files {
-			if filepath.Base(f) == want {
+			if strings.EqualFold(filepath.Base(f), want) {
 				return f
 			}
 		}
 	}
-	// prefer icons under usr/share/icons or pixmaps
-	for _, f := range files {
-		bno := strings.TrimSuffix(filepath.Base(f), filepath.Ext(filepath.Base(f)))
-		if bno == base && (strings.Contains(f, "icons") || strings.Contains(f, "pixmaps")) {
-			return f
+
+	// fallback to canonical AppImage icon
+	if fb := pickFallbackIcon(files); fb != "" {
+		return fb
+	}
+	return ""
+}
+
+func pickFallbackIcon(files []string) string {
+	for _, name := range []string{".DirIcon", "AppIcon.png", "appicon.png", ".DirIcon.png"} {
+		for _, f := range files {
+			if filepath.Base(f) == name || f == name {
+				return f
+			}
 		}
 	}
 	return ""
 }
 
+func isImageFile(lowerBase string) bool {
+	for _, e := range []string{".png", ".svg", ".svgz", ".xpm", ".ico", ".jpg", ".jpeg"} {
+		if strings.HasSuffix(lowerBase, e) {
+			return true
+		}
+	}
+	return false
+}
+
+func iconScore(p string) int {
+	s := 0
+	lp := strings.ToLower(p)
+	if strings.Contains(lp, "256") {
+		s += 3
+	}
+	if strings.Contains(lp, "128") {
+		s += 2
+	}
+	if strings.Contains(lp, "icons") || strings.Contains(lp, "pixmaps") {
+		s += 2
+	}
+	if strings.HasPrefix(p, ".DirIcon") || filepath.Base(p) == ".DirIcon" {
+		s += 1
+	}
+	if strings.HasSuffix(strings.ToLower(p), ".png") {
+		s += 1
+	}
+	return s
+}
+
 func catSquashfs(tool, image string, offset int64, file string) ([]byte, error) {
-	cmd := exec.Command(tool, "-o", fmt.Sprintf("%d", offset), "-cat", image, file)
-	return cmd.Output()
+	candidates := []string{file, strings.TrimPrefix(file, "squashfs-root/"), "squashfs-root/" + strings.TrimPrefix(file, "squashfs-root/")}
+	seen := map[string]bool{}
+	var lastErr error
+	for _, c := range candidates {
+		if c == "" || seen[c] {
+			continue
+		}
+		seen[c] = true
+		cmd := exec.Command(tool, "-o", fmt.Sprintf("%d", offset), "-cat", image, c)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			return out, nil
+		}
+		lastErr = fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil, lastErr
 }
 
 func extractFile(tool, image string, offset int64, file string) (string, error) {
