@@ -128,6 +128,7 @@ unsquashfs -version
 cmd/appman/              # entrypoint CLI
 internal/
   appimage/              # scanner, detección de tipo/offset, metadatos e iconos
+  cli/                   # comandos, wiring y presentación de la CLI
   desktop/               # parser/generador de .desktop y listado de entradas gestionadas
   manager/               # estado, plan de sync y aplicación de cambios
   config/                # carga de configuración (defaults + config.toml)
