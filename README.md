@@ -1,15 +1,17 @@
 # appman
 
-`appman` es un gestor de AppImages para Linux escrito en Go. Administra las AppImages de un directorio, detecta sus metadatos y (en versiones posteriores) sincroniza lanzadores `.desktop` e iconos para integrarlas con el menú de aplicaciones.
+`appman` es un gestor de AppImages para Linux escrito en Go. Administra las AppImages de un directorio, detecta sus metadatos y sincroniza lanzadores `.desktop` e iconos para integrarlas con el menú de aplicaciones.
 
-> Estado: **v0.2 en desarrollo** (scanner, logging, inspección de metadatos e `info`). La sincronización/registro (`sync/install/remove`) y la TUI están planificadas.
+> Estado: **v0.3 en desarrollo** (scanner, metadatos, registro/sincronización de `.desktop` e iconos). La TUI está planificada.
 
 ## Características
 
 - **Escaneo** de `*.AppImage` en un directorio (no recursivo por defecto).
 - **Niveles de verbosidad**: `-v`, `-vv`, `-vvv` con salida coloreada.
-- **Inspección de metadatos** (v0.2): tipo de AppImage, offset del SquashFS, nombre, versión, icono, categorías y `.desktop` embebido, con indicación del origen de cada dato. Extracción sin ejecutar la AppImage.
-- CLI basada en Cobra. Directorio por defecto: `~/Applications/AppImages` (configurable con `--dir`).
+- **Inspección de metadatos**: tipo de AppImage, offset del SquashFS, nombre, versión, icono, categorías y `.desktop` embebido, con indicación del origen de cada dato. Extracción sin ejecutar la AppImage.
+- **Integración de escritorio**: genera/actualiza entradas `.desktop` gestionadas e iconos para las AppImages detectadas, con plan de sincronización idempotente (estado real vs deseado) y sin tocar lanzadores no gestionados.
+- **Gestión de huérfanos**: detecta entradas gestionadas cuyo AppImage ya no existe; se eliminan solo bajo petición explícita (`--prune`).
+- CLI basada en Cobra. Directorio por defecto: `~/Applications/AppImages` (configurable con `--dir` o por configuración).
 
 ## Instalación / compilación
 
@@ -34,9 +36,12 @@ go install ./cmd/appman
 # Ayuda
 ./appman --help
 
-# Escanear / listar AppImages
+# Escanear / listar AppImages e integración
 ./appman scan
 ./appman list
+./appman list --installed
+./appman list --available
+./appman list --orphaned
 ./appman scan --dir /ruta/a/AppImages
 
 # Verbosidad
@@ -44,12 +49,43 @@ go install ./cmd/appman
 ./appman list -vv     # mtime/modo
 ./appman list -vvv    # debug
 
-# Información detallada de una AppImage (v0.2)
+# Información detallada de una AppImage
 ./appman info <nombre|archivo>
 ./appman info --dir /ruta/a/AppImages MiApp.AppImage -vvv
+
+# Sincronizar integraciones (.desktop e iconos gestionados)
+./appman sync --dry-run
+./appman sync
+./appman sync --prune        # además elimina huérfanos gestionados
+
+# Integrar o quitar una AppImage concreta
+./appman install <app>
+./appman remove <app>
 ```
 
-`info` busca por nombre/archivo dentro de `--dir`, detecta el tipo (p.ej. Type 2 / SquashFS), lee el `.desktop` interno y localiza el icono, mostrando el origen de los metadatos y cualquier degradación.
+- `info` busca por nombre/archivo dentro de `--dir`, detecta el tipo (p.ej. Type 2 / SquashFS), lee el `.desktop` interno y localiza el icono, mostrando el origen de los metadatos y cualquier degradación.
+- `sync`/`install`/`remove` calculan un plan (crear/actualizar/eliminar/sin cambios) y solo aplican lo necesario; repetir `sync` sin cambios es idempotente. Los huérfanos gestionados no se eliminan salvo con `--prune`.
+
+## Configuración
+
+Opcionalmente, `~/.config/appman/config.toml` (si no existe, se usan valores por defecto):
+
+```toml
+[general]
+appimage_dir = "~/Applications/AppImages"
+desktop_dir = "~/.local/share/applications"
+icon_dir = "~/.local/share/icons/appman"
+
+[scanner]
+recursive = false
+extract_icons = true
+
+[desktop]
+categories = ["Utility"]
+startup_notify = true
+```
+
+Las entradas `.desktop` creadas por `appman` se marcan como gestionadas (`X-Appman-Managed`, `X-Appman-ID`, `X-Appman-AppImage`) para no modificar ni eliminar lanzadores ajenos.
 
 ## Dependencias
 
@@ -59,11 +95,12 @@ Gestionados en `go.mod` (se descargan con `go build` / `go mod tidy`):
 
 - [spf13/cobra](https://github.com/spf13/cobra) — CLI, subcomandos y flags.
 - [charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss) — estilos/colores en terminal.
-- (Planificado) Bubble Tea y Bubbles para la TUI, y un parser TOML para configuración.
+- [BurntSushi/toml](https://github.com/BurntSushi/toml) — lectura de `config.toml`.
+- (Planificado) Bubble Tea y Bubbles para la TUI.
 
 ### Dependencias del sistema
 
-- **`squashfs-tools`** (proporciona `unsquashfs`): requerido para la extracción de metadatos/iconos embebidos de AppImages **Type 2** en `appman info` (v0.2). `appman` localiza `unsquashfs` en el `PATH` y lo invoca con el offset del SquashFS **sin ejecutar la AppImage**. Si no está instalado, `info` degrada el resultado y muestra un aviso accionable.
+- **`squashfs-tools`** (proporciona `unsquashfs`): requerido para la extracción de metadatos/iconos embebidos de AppImages **Type 2** (`info`, `list`/`sync` cuando inspeccionan metadatos). `appman` localiza `unsquashfs` en el `PATH` y lo invoca con el offset del SquashFS **sin ejecutar la AppImage**. Si no está instalado, la extracción degrada el resultado y se muestra un aviso accionable.
 
 Instalación según distribución:
 
@@ -91,9 +128,9 @@ unsquashfs -version
 cmd/appman/              # entrypoint CLI
 internal/
   appimage/              # scanner, detección de tipo/offset, metadatos e iconos
-  desktop/               # (planificado) parser/generador de .desktop y registry
-  manager/               # (planificado) orquestación y plan de sync
-  config/                # (planificado) configuración
+  desktop/               # parser/generador de .desktop y listado de entradas gestionadas
+  manager/               # estado, plan de sync y aplicación de cambios
+  config/                # carga de configuración (defaults + config.toml)
   logging/               # logging con niveles y color
   tui/                   # (planificado) interfaz Bubble Tea
 ```
@@ -101,8 +138,8 @@ internal/
 ## Roadmap
 
 - v0.1: scanner y detección de AppImages, CLI y logging con verbosidad. ✅
-- v0.2: extracción de metadatos e iconos, `info`. 🚧
-- v0.3: generación/registro de `.desktop` y sincronización idempotente.
+- v0.2: extracción de metadatos e iconos, `info`. ✅
+- v0.3: generación/registro de `.desktop` y sincronización idempotente. 🚧
 - v0.4: CLI pulida y completions.
 - v0.5: TUI (Bubble Tea).
 - v0.6+: sincronización inteligente y watcher opcional.
