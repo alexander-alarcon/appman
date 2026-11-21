@@ -50,4 +50,3 @@ func Default() Config {
 func Load() (Config, error) {
 	return Default(), nil
 }
-

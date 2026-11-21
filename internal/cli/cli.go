@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+
 type App struct {
 	Out io.Writer
 	Err io.Writer
@@ -43,7 +45,7 @@ func (a *App) Execute() error {
 	defaultCfg := config.Default()
 	rootCmd := a.newRootCmd(defaultCfg)
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(a.Err, "error: %v\n", err)
+		_, _ = fmt.Fprintf(a.Err, "error: %v\n", err)
 		return err
 	}
 	return nil
@@ -53,6 +55,7 @@ func (a *App) newRootCmd(defaultCfg config.Config) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:           "appman",
 		Short:         "Manage your AppImages",
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -66,7 +69,7 @@ func (a *App) newRootCmd(defaultCfg config.Config) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "No command specified. Run 'appman --help' to see available commands.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No command specified. Run 'appman --help' to see available commands.")
 			return nil
 		},
 	}

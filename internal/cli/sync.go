@@ -52,7 +52,7 @@ func (a *App) runSync(cmd *cobra.Command, args []string) error {
 	printPlan(cmd.OutOrStdout(), plan, a.log)
 
 	if a.dryRun {
-		fmt.Fprintln(cmd.OutOrStdout(), "\nDry run: no changes were made.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nDry run: no changes were made.")
 		return nil
 	}
 
@@ -85,7 +85,7 @@ func (a *App) runInstall(cmd *cobra.Command, args []string) error {
 	printPlan(cmd.OutOrStdout(), filtered, a.log)
 
 	if a.dryRun {
-		fmt.Fprintln(cmd.OutOrStdout(), "\nDry run: no changes were made.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nDry run: no changes were made.")
 		return nil
 	}
 
@@ -113,7 +113,7 @@ func (a *App) runRemove(cmd *cobra.Command, args []string) error {
 	printPlan(cmd.OutOrStdout(), filtered, a.log)
 
 	if a.dryRun {
-		fmt.Fprintln(cmd.OutOrStdout(), "\nDry run: no changes were made.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nDry run: no changes were made.")
 		return nil
 	}
 

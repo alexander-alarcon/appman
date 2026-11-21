@@ -29,10 +29,10 @@ func (a *App) runScan(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(res.Images) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No AppImages found.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No AppImages found.")
 		return nil
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Found %d AppImages.\n\n", len(res.Images))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Found %d AppImages.\n\n", len(res.Images))
 	return printImages(cmd.OutOrStdout(), res.Images, a.log)
 }

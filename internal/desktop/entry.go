@@ -27,15 +27,15 @@ func (e *Entry) Get(k string) string { return e.Values[k] }
 func (e *Entry) IsManaged() bool     { return strings.EqualFold(e.Get(ManagedKey), ManagedValue) }
 
 type Spec struct {
-	ID          string
-	Name        string
-	Comment     string
-	Exec        string
-	Icon        string
-	Categories  string
-	AppImage    string
-	Version     string
-	Terminal    bool
+	ID            string
+	Name          string
+	Comment       string
+	Exec          string
+	Icon          string
+	Categories    string
+	AppImage      string
+	Version       string
+	Terminal      bool
 	StartupNotify bool
 }
 
@@ -47,24 +47,6 @@ func Generate(spec Spec) string {
 	if !strings.HasSuffix(cats, ";") {
 		cats += ";"
 	}
-	lines := []string{
-		"[Desktop Entry]",
-		"Type=Application",
-		"Name=" + escape(spec.Name),
-		"Exec=" + spec.Exec,
-		"Icon=" + spec.Icon,
-		"Categories=" + cats,
-		fmt.Sprintf("Terminal=%t", spec.Terminal),
-		fmt.Sprintf("StartupNotify=%t", spec.StartupNotify),
-		ManagedKey + "=" + ManagedValue,
-		ManagedIDKey + "=" + spec.ID,
-		ManagedAppPathKey + "=" + spec.AppImage,
-	}
-	if spec.Comment != "" {
-		lines = append([]string{lines[0], lines[1], "Name=" + escape(spec.Name), "Comment=" + escape(spec.Comment)}, lines[4:]...)
-		// easier: rebuild properly
-	}
-	// rebuild cleanly
 	out := []string{"[Desktop Entry]", "Type=Application", "Name=" + escape(spec.Name)}
 	if spec.Comment != "" {
 		out = append(out, "Comment="+escape(spec.Comment))

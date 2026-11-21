@@ -93,6 +93,19 @@ appman completion fish > ~/.config/fish/completions/appman.fish
 
 Los comandos `info`, `install` y `remove` sugieren dinámicamente nombres/archivos de AppImages detectados en `--dir`.
 
+## Desarrollo
+
+```bash
+make fmt      # formatear código
+make vet      # go vet
+make lint     # golangci-lint
+make test     # go test ./...
+make check    # fmt-check + vet + lint + test
+make build    # compilar binario
+```
+
+Requiere Go y `golangci-lint` v2 para linting.
+
 ## Dependencias
 
 ### Módulos de Go

@@ -1,5 +1,10 @@
 # Binaries
 /appman
+coverage.out
+coverage.html
+*.test
+dist/
+
 *.exe
 *.test
 *.out

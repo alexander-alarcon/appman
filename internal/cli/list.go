@@ -35,13 +35,12 @@ func (a *App) runList(cmd *cobra.Command, args []string) error {
 
 	states := a.filterStates(plan.States)
 	if len(states) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No applications found.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No applications found.")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tSTATUS\tVERSION\tFILE")
-
+	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tVERSION\tFILE")
 	var installed, available, orphaned int
 	for _, st := range states {
 		name, version, file := "", "", ""
@@ -64,8 +63,7 @@ func (a *App) runList(cmd *cobra.Command, args []string) error {
 			orphaned++
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, status, version, file)
-
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, status, version, file)
 		if a.log.Level() >= 1 && st.Inspect != nil { // LevelV
 			a.log.V("%s", st.Inspect.Image.Path)
 		}
@@ -78,7 +76,7 @@ func (a *App) runList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "\n%d applications: %d installed, %d available, %d orphaned.\n",
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\n%d applications: %d installed, %d available, %d orphaned.\n",
 		len(states), installed, available, orphaned)
 	return nil
 }

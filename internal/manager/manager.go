@@ -23,13 +23,13 @@ const (
 )
 
 type AppState struct {
-	ID           string
-	Inspect      *appimage.InspectInfo
-	Desktop      *desktop.Entry
-	Status       Status
-	DesiredPath  string
-	DesiredIcon  string
-	Reason       string
+	ID          string
+	Inspect     *appimage.InspectInfo
+	Desktop     *desktop.Entry
+	Status      Status
+	DesiredPath string
+	DesiredIcon string
+	Reason      string
 }
 
 type ActionKind string
@@ -218,13 +218,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
 	if _, err := out.ReadFrom(in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	return out.Close()

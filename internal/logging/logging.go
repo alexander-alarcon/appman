@@ -56,36 +56,36 @@ func LevelFromCount(n int) Level {
 }
 
 func (l *Logger) Info(format string, a ...any) {
-	fmt.Fprintf(l.out, "%s %s\n", l.info.Render("[INFO] "), fmt.Sprintf(format, a...))
+	_, _ = fmt.Fprintf(l.out, "%s %s\n", l.info.Render("[INFO] "), fmt.Sprintf(format, a...))
 }
 
 func (l *Logger) OK(format string, a ...any) {
-	fmt.Fprintf(l.out, "%s %s\n", l.ok.Render("[OK]   "), fmt.Sprintf(format, a...))
+	_, _ = fmt.Fprintf(l.out, "%s %s\n", l.ok.Render("[OK]   "), fmt.Sprintf(format, a...))
 }
 
 func (l *Logger) Warn(format string, a ...any) {
-	fmt.Fprintf(l.out, "%s %s\n", l.warn.Render("[WARN] "), fmt.Sprintf(format, a...))
+	_, _ = fmt.Fprintf(l.out, "%s %s\n", l.warn.Render("[WARN] "), fmt.Sprintf(format, a...))
 }
 
 func (l *Logger) Error(format string, a ...any) {
-	fmt.Fprintf(l.errOut, "%s %s\n", l.err.Render("[ERR]  "), fmt.Sprintf(format, a...))
+	_, _ = fmt.Fprintf(l.errOut, "%s %s\n", l.err.Render("[ERR]  "), fmt.Sprintf(format, a...))
 }
 
 func (l *Logger) Debug(format string, a ...any) {
 	if l.level >= LevelVVV {
-		fmt.Fprintf(l.out, "%s %s\n", l.debug.Render("[DEBUG]"), fmt.Sprintf(format, a...))
+		_, _ = fmt.Fprintf(l.out, "%s %s\n", l.debug.Render("[DEBUG]"), fmt.Sprintf(format, a...))
 	}
 }
 
 func (l *Logger) V(format string, a ...any) {
 	if l.level >= LevelV {
-		fmt.Fprintf(l.out, "%s %s\n", l.info.Render("[INFO] "), fmt.Sprintf(format, a...))
+		_, _ = fmt.Fprintf(l.out, "%s %s\n", l.info.Render("[INFO] "), fmt.Sprintf(format, a...))
 	}
 }
 
 func (l *Logger) VV(format string, a ...any) {
 	if l.level >= LevelVV {
-		fmt.Fprintf(l.out, "%s %s\n", l.info.Render("[INFO] "), fmt.Sprintf(format, a...))
+		_, _ = fmt.Fprintf(l.out, "%s %s\n", l.info.Render("[INFO] "), fmt.Sprintf(format, a...))
 	}
 }
 

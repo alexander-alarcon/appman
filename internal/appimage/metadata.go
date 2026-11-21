@@ -31,17 +31,17 @@ type Metadata struct {
 }
 
 type InspectInfo struct {
-	Image        Image
-	Type         AppType
-	Offset       int64
-	Metadata     Metadata
-	DesktopFile  string
-	IconFile     string
-	IconExtract  string
-	Origins      map[string]string
-	Warnings     []string
-	Degraded     bool
-	ExtractTool  string
+	Image       Image
+	Type        AppType
+	Offset      int64
+	Metadata    Metadata
+	DesktopFile string
+	IconFile    string
+	IconExtract string
+	Origins     map[string]string
+	Warnings    []string
+	Degraded    bool
+	ExtractTool string
 }
 
 var squashfsMagic = []byte{'h', 's', 'q', 's'}
@@ -84,11 +84,10 @@ func detectTypeAndOffset(info *InspectInfo) {
 		info.Warnings = append(info.Warnings, fmt.Sprintf("open: %v", err))
 		return
 	}
-	defer f.Close()
-
+	defer func() { _ = f.Close() }()
 	ef, err := elf.NewFile(f)
 	if err == nil {
-		defer ef.Close()
+		defer func() { _ = ef.Close() }()
 		// collect candidates: elf-derived end and all hsqs occurrences
 		off := elfEndOffset(ef)
 		magics := scanSquashfsMagics(f, info.Image.Size)
@@ -164,12 +163,6 @@ func elfEndOffset(ef *elf.File) int64 {
 	}
 	// align up a bit; squashfs commonly follows
 	return maxEnd
-}
-
-func checkMagicAt(r io.ReaderAt, off int64) bool {
-	b := make([]byte, 4)
-	n, err := r.ReadAt(b, off)
-	return err == nil && n == 4 && bytes.Equal(b, squashfsMagic)
 }
 
 func scanSquashfsMagics(r io.ReaderAt, size int64) []int64 {
@@ -276,7 +269,7 @@ func candidateOffsets(info *InspectInfo) []int64 {
 	f, err := os.Open(info.Image.Path)
 	if err == nil {
 		cands = append(cands, scanSquashfsMagics(f, info.Image.Size)...)
-		f.Close()
+		_ = f.Close()
 	}
 	return uniqueOffsets(cands)
 }
@@ -317,7 +310,7 @@ func listSquashfs(tool, image string, offset int64) ([]string, error) {
 				msg = strings.TrimSpace(string(out))
 			}
 			if msg != "" {
-				return nil, fmt.Errorf("%v: %s", err2, msg)
+				return nil, fmt.Errorf("%w: %s", err2, msg)
 			}
 			return nil, err2
 		}
@@ -510,7 +503,7 @@ func catSquashfs(tool, image string, offset int64, file string) ([]byte, error) 
 		if err == nil {
 			return out, nil
 		}
-		lastErr = fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+		lastErr = fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil, lastErr
 }
@@ -523,7 +516,7 @@ func extractFile(tool, image string, offset int64, file string) (string, error) 
 	// extract single file to temp dir
 	cmd := exec.Command(tool, "-o", fmt.Sprintf("%d", offset), "-d", tmp, "-f", image, file)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("%v: %s", err, string(out))
+		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 	}
 	outPath := filepath.Join(tmp, filepath.FromSlash(file))
 	if _, err := os.Stat(outPath); err != nil {
