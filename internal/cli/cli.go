@@ -40,12 +40,7 @@ func Execute() error {
 }
 
 func (a *App) Execute() error {
-	defaultCfg, err := config.Load()
-	if err != nil {
-		fmt.Fprintf(a.Err, "error: loading configuration: %v\n", err)
-		return err
-	}
-
+	defaultCfg := config.Default()
 	rootCmd := a.newRootCmd(defaultCfg)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(a.Err, "error: %v\n", err)
@@ -62,11 +57,7 @@ func (a *App) newRootCmd(defaultCfg config.Config) *cobra.Command {
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			a.log = logging.New(logging.LevelFromCount(a.verbosity))
-			c, err := config.Load()
-			if err != nil {
-				return fmt.Errorf("loading configuration: %w", err)
-			}
-			a.cfg = c
+			a.cfg = config.Default()
 			if cmd.Flags().Changed("dir") {
 				a.cfg.General.AppImageDir = a.appDir
 			} else {

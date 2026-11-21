@@ -2,7 +2,7 @@
 
 `appman` es un gestor de AppImages para Linux escrito en Go. Administra las AppImages de un directorio, detecta sus metadatos y sincroniza lanzadores `.desktop` e iconos para integrarlas con el menú de aplicaciones.
 
-> Estado: **v0.3 en desarrollo** (scanner, metadatos, registro/sincronización de `.desktop` e iconos). La TUI está planificada.
+> Estado: **v0.4 en desarrollo** (CLI pulida, completions bash/zsh/fish y robustez). La TUI está planificada.
 
 ## Características
 
@@ -11,7 +11,8 @@
 - **Inspección de metadatos**: tipo de AppImage, offset del SquashFS, nombre, versión, icono, categorías y `.desktop` embebido, con indicación del origen de cada dato. Extracción sin ejecutar la AppImage.
 - **Integración de escritorio**: genera/actualiza entradas `.desktop` gestionadas e iconos para las AppImages detectadas, con plan de sincronización idempotente (estado real vs deseado) y sin tocar lanzadores no gestionados.
 - **Gestión de huérfanos**: detecta entradas gestionadas cuyo AppImage ya no existe; se eliminan solo bajo petición explícita (`--prune`).
-- CLI basada en Cobra. Directorio por defecto: `~/Applications/AppImages` (configurable con `--dir` o por configuración).
+- **Completions** para bash, zsh y fish (incluye sugerencias dinámicas de apps para `info`, `install` y `remove`).
+- CLI basada en Cobra. Directorio por defecto: `~/Applications/AppImages` (configurable con `--dir`; MVP sin archivo de configuración).
 
 ## Instalación / compilación
 
@@ -66,26 +67,31 @@ go install ./cmd/appman
 - `info` busca por nombre/archivo dentro de `--dir`, detecta el tipo (p.ej. Type 2 / SquashFS), lee el `.desktop` interno y localiza el icono, mostrando el origen de los metadatos y cualquier degradación.
 - `sync`/`install`/`remove` calculan un plan (crear/actualizar/eliminar/sin cambios) y solo aplican lo necesario; repetir `sync` sin cambios es idempotente. Los huérfanos gestionados no se eliminan salvo con `--prune`.
 
-## Configuración
+## Configuración (MVP)
 
-Opcionalmente, `~/.config/appman/config.toml` (si no existe, se usan valores por defecto):
+En esta versión la configuración se hace por **flags** (sin archivo de configuración):
 
-```toml
-[general]
-appimage_dir = "~/Applications/AppImages"
-desktop_dir = "~/.local/share/applications"
-icon_dir = "~/.local/share/icons/appman"
-
-[scanner]
-recursive = false
-extract_icons = true
-
-[desktop]
-categories = ["Utility"]
-startup_notify = true
-```
+- `--dir`: directorio de AppImages (default: `~/Applications/AppImages`).
+- `-v, -vv, -vvv`: verbosidad.
 
 Las entradas `.desktop` creadas por `appman` se marcan como gestionadas (`X-Appman-Managed`, `X-Appman-ID`, `X-Appman-AppImage`) para no modificar ni eliminar lanzadores ajenos.
+
+## Completions
+
+`appman` genera scripts de autocompletado para bash, zsh y fish:
+
+```bash
+# Bash
+source <(appman completion bash)
+
+# Zsh
+source <(appman completion zsh)
+
+# Fish
+appman completion fish > ~/.config/fish/completions/appman.fish
+```
+
+Los comandos `info`, `install` y `remove` sugieren dinámicamente nombres/archivos de AppImages detectados en `--dir`.
 
 ## Dependencias
 
@@ -95,7 +101,6 @@ Gestionados en `go.mod` (se descargan con `go build` / `go mod tidy`):
 
 - [spf13/cobra](https://github.com/spf13/cobra) — CLI, subcomandos y flags.
 - [charmbracelet/lipgloss](https://github.com/charmbracelet/lipgloss) — estilos/colores en terminal.
-- [BurntSushi/toml](https://github.com/BurntSushi/toml) — lectura de `config.toml`.
 - (Planificado) Bubble Tea y Bubbles para la TUI.
 
 ### Dependencias del sistema
@@ -131,7 +136,7 @@ internal/
   cli/                   # comandos, wiring y presentación de la CLI
   desktop/               # parser/generador de .desktop y listado de entradas gestionadas
   manager/               # estado, plan de sync y aplicación de cambios
-  config/                # carga de configuración (defaults + config.toml)
+  config/                # defaults de configuración (MVP por flags)
   logging/               # logging con niveles y color
   tui/                   # (planificado) interfaz Bubble Tea
 ```
@@ -140,8 +145,8 @@ internal/
 
 - v0.1: scanner y detección de AppImages, CLI y logging con verbosidad. ✅
 - v0.2: extracción de metadatos e iconos, `info`. ✅
-- v0.3: generación/registro de `.desktop` y sincronización idempotente. 🚧
-- v0.4: CLI pulida y completions.
+- v0.3: generación/registro de `.desktop` y sincronización idempotente. ✅
+- v0.4: CLI pulida, completions (bash/zsh/fish) y robustez. 🚧
 - v0.5: TUI (Bubble Tea).
 - v0.6+: sincronización inteligente y watcher opcional.
 

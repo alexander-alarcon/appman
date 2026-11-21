@@ -21,10 +21,11 @@ func (a *App) newSyncCmd() *cobra.Command {
 
 func (a *App) newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "install <app>",
-		Short: "Integrate an AppImage with the desktop",
-		Args:  cobra.ExactArgs(1),
-		RunE:  a.runInstall,
+		Use:               "install <app>",
+		Short:             "Integrate an AppImage with the desktop",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: a.completeAppNames,
+		RunE:              a.runInstall,
 	}
 	cmd.Flags().BoolVar(&a.dryRun, "dry-run", false, "Show planned changes without applying them")
 	return cmd
@@ -32,10 +33,11 @@ func (a *App) newInstallCmd() *cobra.Command {
 
 func (a *App) newRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "remove <app>",
-		Short: "Remove an AppImage desktop integration",
-		Args:  cobra.ExactArgs(1),
-		RunE:  a.runRemove,
+		Use:               "remove <app>",
+		Short:             "Remove an AppImage desktop integration",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: a.completeAppNames,
+		RunE:              a.runRemove,
 	}
 	cmd.Flags().BoolVar(&a.dryRun, "dry-run", false, "Show planned changes without applying them")
 	return cmd

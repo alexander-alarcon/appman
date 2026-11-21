@@ -10,10 +10,11 @@ import (
 
 func (a *App) newInfoCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "info <app>",
-		Short: "Show detailed information about an AppImage",
-		Args:  cobra.ExactArgs(1),
-		RunE:  a.runInfo,
+		Use:               "info <app>",
+		Short:             "Show detailed information about an AppImage",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: a.completeAppNames,
+		RunE:              a.runInfo,
 	}
 }
 
